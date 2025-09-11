@@ -1,0 +1,26 @@
+services:
+  # Fastify API service
+  api:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile.api
+      target: development
+    ports:
+      - "3002:3001"
+    environment:
+      - NODE_ENV=development
+      - PORT=3001
+    volumes:
+      - ./apps/api:/app
+      - /app/node_modules
+    command: npm run dev
+
+  # Static web service
+  web:
+    image: nginx:alpine
+    ports:
+      - "3003:80"
+    volumes:
+      - ./apps/web:/usr/share/nginx/html
+    depends_on:
+      - api

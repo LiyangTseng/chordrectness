@@ -1,0 +1,43 @@
+# Development-specific overrides
+# This file overrides production settings for development
+services:
+  # Frontend - using simple nginx (no overrides needed)
+
+  # Backend with hot reload
+  api:
+    build:
+      target: development  # Override: Use development stage
+    volumes:  # Override: Add volume mounts for live editing
+      - ../../apps/api:/app
+      - /app/node_modules
+      - ../../temp:/app/temp
+      - ../../packages:/app/packages
+    environment:  # Override: Development environment variables
+      - NODE_ENV=development
+      - LOG_LEVEL=debug
+    command: npm run dev  # Override: Development command
+
+  # Chord Analyzer Service with hot reload
+  chord-analyzer:
+    build:
+      target: development  # Override: Use development stage
+    volumes:  # Override: Add volume mounts for live editing
+      - ../../services/chord-analyzer:/app
+      - ../../temp_audio:/app/temp_audio
+    command: uvicorn src.main:app --reload --host 0.0.0.0 --port 8001  # Override: Development command
+
+  # Development database with separate data
+  postgres:
+    environment:  # Override: Development database name
+      - POSTGRES_DB=chordrectness_dev
+    volumes:  # Override: Use development volume
+      - postgres-dev-data:/var/lib/postgresql/data
+
+  # Development Redis with separate data
+  redis:
+    volumes:  # Override: Use development volume
+      - redis-dev-data:/data
+
+volumes:
+  postgres-dev-data:  # Development-specific volumes
+  redis-dev-data:

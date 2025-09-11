@@ -1,0 +1,26 @@
+# Core dependencies
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.5.0
+
+# Audio processing
+librosa==0.10.1
+soundfile==0.12.1
+numpy==1.24.3
+scipy==1.11.4
+
+# YouTube audio extraction
+yt-dlp==2023.11.16
+
+# Additional audio processing
+librosa==0.10.1
+scikit-learn==1.3.2
+
+# HTTP client for API calls
+httpx==0.25.2
+
+# Logging
+loguru==0.7.2
+
+# Music theory (for chord analysis)
+music21==9.1.0

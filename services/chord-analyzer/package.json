@@ -1,0 +1,25 @@
+{
+  "name": "@chordrectness/ml-service",
+  "version": "1.0.0",
+  "description": "ChordRectness ML Service - Python-based chord recognition",
+  "scripts": {
+    "dev": "uvicorn main:app --reload --host 0.0.0.0 --port 8001",
+    "start": "uvicorn main:app --host 0.0.0.0 --port 8001",
+    "test": "pytest",
+    "lint": "flake8 .",
+    "format": "black .",
+    "type-check": "mypy ."
+  },
+  "dependencies": {
+    "fastapi": "^0.104.1",
+    "uvicorn": "^0.24.0",
+    "pydantic": "^2.5.0",
+    "python-dotenv": "^1.0.0"
+  },
+  "devDependencies": {
+    "pytest": "^7.4.3",
+    "black": "^23.11.0",
+    "flake8": "^6.1.0",
+    "mypy": "^1.7.1"
+  }
+}
