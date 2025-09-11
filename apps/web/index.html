@@ -194,11 +194,11 @@
             .container {
                 padding: 1rem;
             }
-            
+
             .header h1 {
                 font-size: 2rem;
             }
-            
+
             .form-row {
                 grid-template-columns: 1fr;
             }
@@ -208,7 +208,7 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>🎵 ChordRectness</h1>
+            <h1>ChordRectness</h1>
             <p>AI-powered chord recognition for YouTube videos</p>
         </div>
 
@@ -216,39 +216,39 @@
             <form id="analysisForm">
                 <div class="form-group">
                     <label for="url">YouTube URL</label>
-                    <input 
-                        type="url" 
-                        id="url" 
-                        placeholder="https://www.youtube.com/watch?v=..." 
+                    <input
+                        type="url"
+                        id="url"
+                        placeholder="https://www.youtube.com/watch?v=..."
                         required
                     >
                 </div>
-                
+
                 <div class="form-row">
                     <div class="form-group">
                         <label for="startTime">Start Time (seconds)</label>
-                        <input 
-                            type="number" 
-                            id="startTime" 
-                            placeholder="0" 
-                            min="0" 
-                            step="0.1" 
+                        <input
+                            type="number"
+                            id="startTime"
+                            placeholder="0"
+                            min="0"
+                            step="0.1"
                             required
                         >
                     </div>
-                    
+
                     <div class="form-group">
                         <label for="endTime">End Time (seconds) - Optional</label>
-                        <input 
-                            type="number" 
-                            id="endTime" 
-                            placeholder="60" 
-                            min="0" 
+                        <input
+                            type="number"
+                            id="endTime"
+                            placeholder="60"
+                            min="0"
                             step="0.1"
                         >
                     </div>
                 </div>
-                
+
                 <button type="submit" class="btn" id="submitBtn">
                     Analyze Chords
                 </button>
@@ -272,7 +272,7 @@
 
     <script>
         const API_BASE = 'http://localhost:3002';
-        
+
         const form = document.getElementById('analysisForm');
         const submitBtn = document.getElementById('submitBtn');
         const loading = document.getElementById('loading');
@@ -282,17 +282,17 @@
 
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
-            
+
             const url = document.getElementById('url').value;
             const startTime = parseFloat(document.getElementById('startTime').value);
-            const endTime = document.getElementById('endTime').value ? 
+            const endTime = document.getElementById('endTime').value ?
                 parseFloat(document.getElementById('endTime').value) : undefined;
-            
+
             // Show loading state
             submitBtn.disabled = true;
             loading.style.display = 'block';
             result.style.display = 'none';
-            
+
             try {
                 // Start analysis
                 const response = await fetch(`${API_BASE}/api/analysis/start`, {
@@ -302,31 +302,31 @@
                     },
                     body: JSON.stringify({ url, startTime, endTime })
                 });
-                
+
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
-                
+
                 const data = await response.json();
-                
+
                 if (!data.success) {
                     throw new Error('Analysis failed to start');
                 }
-                
+
                 // Simulate analysis progress (in real app, you'd poll the status)
                 await new Promise(resolve => setTimeout(resolve, 2000));
-                
+
                 // Get results
                 const resultResponse = await fetch(`${API_BASE}/api/analysis/${data.data.analysisId}`);
                 const resultData = await resultResponse.json();
-                
+
                 if (!resultData.success) {
                     throw new Error('Failed to get analysis results');
                 }
-                
+
                 // Display results
                 displayResults(resultData.data);
-                
+
             } catch (error) {
                 console.error('Error:', error);
                 showError(error.message);
@@ -339,17 +339,17 @@
         function displayResults(data) {
             resultTitle.textContent = 'Analysis Complete!';
             result.className = 'result';
-            
+
             const chords = data.results?.chords || [];
             const key = data.results?.key || 'Unknown';
             const tempo = data.results?.tempo || 'Unknown';
-            
+
             let html = `
                 <p><strong>Key:</strong> ${key}</p>
                 <p><strong>Tempo:</strong> ${tempo} BPM</p>
                 <p><strong>Chords Found:</strong> ${chords.length}</p>
             `;
-            
+
             if (chords.length > 0) {
                 html += '<div class="chord-list">';
                 chords.forEach(chord => {
@@ -367,7 +367,7 @@
                 });
                 html += '</div>';
             }
-            
+
             resultContent.innerHTML = html;
             result.style.display = 'block';
         }

@@ -1,36 +1,71 @@
 # Chord Analyzer Service
 
-A Python service for chord recognition using chromagram analysis. This service can analyze audio files and detect chord progressions using machine learning techniques.
+A Python service for single chord recognition using chromagram analysis. This service follows clean architecture principles with proper separation of concerns.
 
 ## Features
 
+- **Single Chord Detection**: Focused on predicting one chord for user-provided time slices
+- **Clean Architecture**: Proper separation of models, services, utilities, and API layers
+- **Object-Oriented Design**: Abstract base classes with concrete implementations
 - **Chromagram Analysis**: Uses librosa to extract chroma features from audio
-- **Chord Recognition**: Detects chord symbols using template matching
+- **Template Matching**: Detects chord symbols using shared chord templates
 - **YouTube Integration**: Can extract audio directly from YouTube URLs
 - **REST API**: FastAPI-based service with automatic documentation
 - **Docker Support**: Containerized for easy deployment
+- **Comprehensive Testing**: Unit tests for all components
 
-## Project Structure
+## Clean Architecture
 
 ```
 services/chord-analyzer/
-├── src/                    # Source code
-│   ├── __init__.py
-│   ├── chord_analyzer.py   # Core chord recognition model
-│   └── main.py            # FastAPI application
-├── tests/                  # Test suite
-│   ├── __init__.py
-│   ├── test_chord_recognition.py
-│   ├── test_api.py
-│   └── run_tests.py
-├── test_audio/            # Test audio files
-│   └── just_as_i_am_a_flat_sharp_11.wav
-├── data/                  # Data files (models, etc.)
-├── models/                # Trained models
-├── requirements.txt       # Python dependencies
-├── setup.py              # Package setup
-└── README.md             # This file
+├── api/                    # API layer (FastAPI)
+│   ├── app.py             # FastAPI application
+│   ├── models.py          # Pydantic models
+│   └── routes.py          # API routes
+├── models/                 # Domain models (chord recognition)
+│   ├── base_chord_model.py        # Abstract base class
+│   ├── chroma_chord_model.py      # Chroma-based implementation
+│   ├── deep_learning_chord_model.py  # ML placeholder
+│   └── model_factory.py           # Factory pattern
+├── services/              # Business logic layer
+│   ├── audio_processor.py         # Audio processing service
+│   └── chord_analysis_service.py  # Chord analysis orchestration
+├── utils/                 # Shared utilities
+│   ├── chord_templates.py         # Chord pattern templates
+│   ├── audio_utils.py             # Audio processing utilities
+│   ├── confidence_utils.py        # Confidence calculation
+│   └── mock_data.py              # Mock data generation
+├── tests/                 # Test layer
+│   ├── unit/              # Unit tests
+│   │   ├── test_chord_models.py   # Model tests
+│   │   └── test_utilities.py      # Utility tests
+│   └── integration/       # Integration tests
+├── data/                  # Data files
+│   └── test_audio/        # Test audio files
+├── main.py               # Application entry point
+├── requirements.txt      # Python dependencies
+└── setup.py             # Package setup
 ```
+
+## Key Design Principles
+
+### 1. Single Responsibility Principle
+- **Models**: Focus only on chord recognition logic
+- **Services**: Orchestrate business logic
+- **Utils**: Provide shared functionality
+- **API**: Handle HTTP requests/responses
+
+### 2. Open/Closed Principle
+- Easy to add new model types (CNN, RNN, etc.) without modifying existing code
+- Factory pattern allows runtime model selection
+
+### 3. Dependency Inversion
+- High-level modules don't depend on low-level modules
+- Both depend on abstractions (base classes)
+
+### 4. Clean Naming
+- Descriptive, purpose-driven names
+- No abbreviations or unclear terms
 
 ## Installation
 
@@ -43,13 +78,11 @@ pip install -r requirements.txt
 
 2. Run tests:
 ```bash
-cd tests
-python run_tests.py
+python tests/run_tests.py unit
 ```
 
 3. Start the service:
 ```bash
-cd src
 python main.py
 ```
 
@@ -65,7 +98,7 @@ docker run -p 8001:8001 chord-analyzer
 ### API Endpoints
 
 - `GET /health` - Health check
-- `POST /analyze` - Analyze chords in audio
+- `POST /analyze` - Analyze single chord in audio
 
 ### Example API Call
 
@@ -80,56 +113,64 @@ response = requests.post("http://localhost:8001/analyze", json={
 })
 
 result = response.json()
-print(f"Detected chords: {result['chords']}")
+print(f"Detected chord: {result['chord']}")
+print(f"Confidence: {result['confidence']}")
 ```
 
 ### Direct Usage
 
 ```python
-from src.chord_analyzer import ChordRecognitionModel
+from models.model_factory import ModelFactory
 
-model = ChordRecognitionModel()
-chords = model.predict("path/to/audio.wav", start_time=80.0, end_time=81.0)
+# Create a chroma model
+model = ModelFactory.create_model("chroma")
 
-for chord in chords:
-    print(f"{chord['symbol']} ({chord['start_time']:.1f}s - {chord['end_time']:.1f}s)")
+# Predict single chord
+result = model.predict_chord("path/to/audio.wav", start_time=80.0, end_time=81.0)
+print(f"Chord: {result['chord']}, Confidence: {result['confidence']}")
 ```
 
 ## Testing
 
 Run all tests:
 ```bash
-cd tests
-python run_tests.py
+python tests/run_tests.py unit
 ```
 
-Run specific test suite:
+Run specific test categories:
 ```bash
-python run_tests.py chord_recognition
-python run_tests.py api
+python tests/unit/test_chord_models.py
+python tests/unit/test_utilities.py
 ```
 
 ## Development
 
 ### Adding New Chord Templates
 
-Edit `src/chord_analyzer.py` and add new patterns to the `chord_templates` dictionary:
+Edit `utils/chord_templates.py` and add new patterns to the `TEMPLATES` dictionary:
 
 ```python
-chord_templates = {
+TEMPLATES = {
     'Cmaj7': [1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1],  # C-E-G-B
     # Add more patterns...
 }
 ```
 
-### Running Tests
+### Adding New Model Types
+
+1. Create new model class inheriting from `BaseChordModel`
+2. Implement required abstract methods
+3. Add to `ModelFactory`
+4. Add tests
+
+### Test Coverage
 
 The test suite includes:
-- Unit tests for chord recognition
-- API endpoint tests
-- Integration tests with real audio files
-
-Make sure the test audio file is in `test_audio/` directory.
+- Unit tests for all utilities
+- Model interface consistency tests
+- Chord template matching tests
+- Confidence calculation tests
+- Mock data generation tests
 
 ## API Documentation
 

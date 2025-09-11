@@ -72,7 +72,7 @@ app.use('*', (req, res) => {
 async function startServer() {
   try {
     await initializeServices();
-    
+
     app.listen(PORT, () => {
       logger.info(`🚀 Server running on port ${PORT}`);
       logger.info(`📊 Health check: http://localhost:${PORT}/api/health`);

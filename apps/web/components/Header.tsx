@@ -7,19 +7,19 @@ export function Header() {
             <span className="text-2xl">🎵</span>
             <h1 className="text-xl font-bold text-gray-900">ChordRectness</h1>
           </div>
-          
+
           <nav className="flex items-center space-x-6">
-            <a 
-              href="http://localhost:3001/docs" 
-              target="_blank" 
+            <a
+              href="http://localhost:3001/docs"
+              target="_blank"
               rel="noopener noreferrer"
               className="text-gray-600 hover:text-gray-900 transition-colors"
             >
               API Docs
             </a>
-            <a 
-              href="http://localhost:3001/api/health" 
-              target="_blank" 
+            <a
+              href="http://localhost:3001/api/health"
+              target="_blank"
               rel="noopener noreferrer"
               className="text-gray-600 hover:text-gray-900 transition-colors"
             >

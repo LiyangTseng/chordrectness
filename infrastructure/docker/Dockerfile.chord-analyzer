@@ -25,6 +25,54 @@ RUN mkdir -p /app/temp_audio
 # Expose port
 EXPOSE 8001
 
-# Run the application
-CMD ["python", "main.py"]
+# Multi-stage build for development and production
+FROM python:3.11-slim as development
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    ffmpeg \
+    libsndfile1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements and install dependencies
+COPY services/chord-analyzer/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
+COPY services/chord-analyzer/ .
+
+# Create temp directory
+RUN mkdir -p /app/temp_audio
+
+EXPOSE 8001
+
+# Development command with hot reload
+CMD ["uvicorn", "api.app:app", "--reload", "--host", "0.0.0.0", "--port", "8001"]
+
+FROM python:3.11-slim as production
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    ffmpeg \
+    libsndfile1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements and install dependencies
+COPY services/chord-analyzer/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
+COPY services/chord-analyzer/ .
+
+# Create temp directory
+RUN mkdir -p /app/temp_audio
+
+EXPOSE 8001
+
+# Production command
+CMD ["python", "server.py"]
 

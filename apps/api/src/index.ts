@@ -7,6 +7,8 @@ import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import sensible from '@fastify/sensible';
 import { v4 as uuidv4 } from 'uuid';
+import * as fs from 'fs';
+import * as path from 'path';
 import { ChordDetector } from './services/ChordDetector';
 import { AudioProcessor } from './services/AudioProcessor';
 import { ChordAnalyzerClient } from './services/ChordAnalyzerClient';
@@ -142,10 +144,10 @@ async function registerRoutes() {
     }
   }, async (request, reply) => {
     const { url, startTime, endTime } = request.body as any;
-    
+
     // Generate analysis ID
     const analysisId = uuidv4();
-    
+
     // Store initial analysis state
     analysisResults.set(analysisId, {
       analysisId,
@@ -157,10 +159,10 @@ async function registerRoutes() {
       startTime,
       endTime
     });
-    
+
     // Process audio asynchronously
     processAudioAsync(analysisId, url, startTime, endTime);
-    
+
     return {
       success: true,
       data: {
@@ -171,6 +173,62 @@ async function registerRoutes() {
         updatedAt: new Date().toISOString()
       }
     };
+  });
+
+  // Audio file upload analysis
+  fastify.post('/api/analysis/audio', {
+    schema: {
+      description: 'Analyze chord in uploaded audio file',
+      tags: ['analysis']
+    }
+  }, async (request, reply) => {
+    try {
+      const data = await request.file();
+
+      if (!data) {
+        return reply.code(400).send({ error: 'No file uploaded' });
+      }
+
+      // Create a temporary file
+      const tempPath = path.join(process.cwd(), 'temp', 'audio', `${Date.now()}_${data.filename}`);
+      const writeStream = fs.createWriteStream(tempPath);
+
+      // Write the file
+      await new Promise((resolve, reject) => {
+        data.file.pipe(writeStream);
+        writeStream.on('finish', resolve);
+        writeStream.on('error', reject);
+      });
+
+      // Call Python service
+      const formData = new FormData();
+      formData.append('file', fs.createReadStream(tempPath), data.filename);
+      formData.append('start_time', data.fields?.start_time?.value || '0');
+      if (data.fields?.end_time?.value) {
+        formData.append('end_time', data.fields.end_time.value);
+      }
+      formData.append('model_type', data.fields?.model_type?.value || 'chroma');
+
+      const pythonResponse = await fetch('http://localhost:8001/api/v1/analyze/audio', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!pythonResponse.ok) {
+        throw new Error(`Python service error: ${pythonResponse.status}`);
+      }
+
+      const result = await pythonResponse.json();
+
+      // Clean up temp file
+      fs.unlinkSync(tempPath);
+
+      return result;
+
+    } catch (error) {
+      fastify.log.error('Audio analysis error:', error);
+      return reply.code(500).send({ error: 'Analysis failed' });
+    }
   });
 
   // Get analysis status
@@ -206,7 +264,7 @@ async function registerRoutes() {
     }
   }, async (request, reply) => {
     const { id } = request.params as any;
-    
+
     const analysis = analysisResults.get(id);
     if (!analysis) {
       return reply.code(404).send({
@@ -214,7 +272,7 @@ async function registerRoutes() {
         error: 'Analysis not found'
       });
     }
-    
+
     return {
       success: true,
       data: analysis
@@ -235,11 +293,11 @@ async function processAudioAsync(analysisId: string, url: string, startTime: num
 
     // Check if chord analyzer service is available
     const isHealthy = await chordAnalyzerClient.healthCheck();
-    
+
     if (isHealthy) {
       // Use Python chord analyzer service
       fastify.log.info('Using Python chord analyzer service');
-      
+
       const analysisResult = await chordAnalyzerClient.analyzeChords({
         url,
         start_time: startTime,
@@ -263,7 +321,7 @@ async function processAudioAsync(analysisId: string, url: string, startTime: num
     } else {
       // Fallback to mock analysis
       fastify.log.warn('Chord analyzer service unavailable, using mock analysis');
-      
+
       // Extract audio from YouTube
       const audioResult = await audioProcessor.extractAudioFromYouTube(url, startTime, endTime);
 
@@ -311,12 +369,12 @@ async function start() {
   try {
     await registerPlugins();
     await registerRoutes();
-    
-    const port = parseInt(process.env.PORT || '3001');
+
+    const port = parseInt(process.env.PORT || '3002');
     const host = process.env.HOST || '0.0.0.0';
-    
+
     await fastify.listen({ port, host });
-    
+
     console.log(`🚀 ChordRectness API server running on http://${host}:${port}`);
     console.log(`📊 Health check: http://${host}:${port}/api/health`);
     console.log(`📚 API docs: http://${host}:${port}/docs`);

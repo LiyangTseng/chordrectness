@@ -37,12 +37,28 @@ export class ChordAnalyzerClient {
    */
   async analyzeChords(request: ChordAnalysisRequest): Promise<ChordAnalysisResponse> {
     try {
-      const response = await fetch(`${this.baseUrl}/analyze`, {
+      // First extract audio from YouTube using our AudioProcessor
+      const audioProcessor = new (await import('./AudioProcessor')).AudioProcessor();
+      const audioResult = await audioProcessor.extractAudioFromYouTube(
+        request.url,
+        request.start_time,
+        request.end_time
+      );
+
+      // Then send the audio file to the Python service
+      const formData = new FormData();
+      const audioBuffer = await audioProcessor.readAudioFile(audioResult.audioPath);
+      const audioBlob = new Blob([audioBuffer], { type: 'audio/wav' });
+      formData.append('file', audioBlob, 'audio.wav');
+      formData.append('start_time', request.start_time.toString());
+      if (request.end_time) {
+        formData.append('end_time', request.end_time.toString());
+      }
+      formData.append('model_type', 'chroma');
+
+      const response = await fetch(`${this.baseUrl}/api/v1/analyze/audio`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(request),
+        body: formData,
       });
 
       if (!response.ok) {
@@ -51,7 +67,24 @@ export class ChordAnalyzerClient {
       }
 
       const result = await response.json();
-      return result;
+
+      // Clean up the audio file
+      await audioProcessor.cleanup(audioResult.audioPath);
+
+      // Transform the result to match our expected format
+      return {
+        analysis_id: request.analysis_id,
+        status: 'completed',
+        chords: [{
+          chord: result.chord,
+          confidence: result.confidence,
+          start_time: request.start_time,
+          end_time: request.end_time || request.start_time + 1
+        }],
+        key: 'Unknown',
+        tempo: 120,
+        time_signature: '4/4'
+      };
     } catch (error) {
       console.error('Error calling chord analyzer service:', error);
       throw new Error(`Failed to analyze chords: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -63,7 +96,7 @@ export class ChordAnalyzerClient {
    */
   async healthCheck(): Promise<boolean> {
     try {
-      const response = await fetch(`${this.baseUrl}/health`);
+      const response = await fetch(`${this.baseUrl}/api/v1/health`);
       return response.ok;
     } catch (error) {
       console.error('Chord analyzer service health check failed:', error);
