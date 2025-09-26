@@ -8,6 +8,7 @@ import ffmpeg from 'fluent-ffmpeg';
 import fs from 'fs/promises';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
+import { Readable } from 'stream';
 import logger from '../utils/logger';
 import { AudioExtractionOptions, AudioInfo } from '../types';
 
@@ -31,8 +32,8 @@ export class AudioExtractor {
    * Extract audio segment from YouTube video
    */
   async extractAudioSegment(
-    url: string, 
-    startTime: number, 
+    url: string,
+    startTime: number,
     endTime?: number
   ): Promise<string> {
     try {
@@ -44,7 +45,7 @@ export class AudioExtractor {
       // Get video info
       const info = await ytdl.getInfo(url);
       const videoId = info.videoDetails.videoId;
-      
+
       logger.info(`Extracting audio from video: ${info.videoDetails.title}`);
 
       // Generate unique filename
@@ -72,7 +73,7 @@ export class AudioExtractor {
    * Extract audio with FFmpeg
    */
   private async extractWithFFmpeg(
-    audioStream: NodeJS.ReadableStream,
+    audioStream: Readable,
     outputPath: string,
     startTime: number,
     endTime?: number
@@ -135,7 +136,8 @@ export class AudioExtractor {
             duration: metadata.format.duration || 0,
             sampleRate: stream.sample_rate || 0,
             channels: stream.channels || 0,
-            bitrate: parseInt(metadata.format.bit_rate || '0')
+            bitrate: parseInt(String(metadata.format.bit_rate || '0')),
+            format: metadata.format.format_name || 'wav'
           });
         }
       });
@@ -152,8 +154,8 @@ export class AudioExtractor {
     try {
       const info = await ytdl.getInfo(url);
       const videoId = info.videoDetails.videoId;
-      
-      const filename = `${videoId}_${uuidv4()}.${options.format || 'wav'}`;
+
+      const filename = `${videoId}_${uuidv4()}.wav`;
       const outputPath = path.join(this.tempDir, filename);
 
       const audioStream = ytdl(url, {
@@ -175,25 +177,25 @@ export class AudioExtractor {
    * Extract audio with custom FFmpeg options
    */
   private async extractWithCustomOptions(
-    audioStream: NodeJS.ReadableStream,
+    audioStream: Readable,
     outputPath: string,
     options: AudioExtractionOptions
   ): Promise<void> {
     return new Promise((resolve, reject) => {
       let command = ffmpeg(audioStream)
         .audioCodec('pcm_s16le')
-        .audioChannels(options.channels || 1)
-        .audioFrequency(options.sampleRate || 22050)
-        .format(options.format || 'wav');
+        .audioChannels(1)
+        .audioFrequency(22050)
+        .format('wav');
 
       // Add time filters
-      if (options.startTime > 0 || options.endTime) {
+      if ((options.startTime && options.startTime > 0) || options.endTime) {
         let filter = '';
-        if (options.startTime > 0) {
+        if (options.startTime && options.startTime > 0) {
           filter += `atrim=start=${options.startTime}`;
         }
         if (options.endTime) {
-          filter += options.startTime > 0 ? `:end=${options.endTime}` : `atrim=end=${options.endTime}`;
+          filter += (options.startTime && options.startTime > 0) ? `:end=${options.endTime}` : `atrim=end=${options.endTime}`;
         }
         command = command.audioFilters(filter);
       }
@@ -224,7 +226,7 @@ export class AudioExtractor {
   async cleanupAll(): Promise<void> {
     try {
       const files = await fs.readdir(this.tempDir);
-      const deletePromises = files.map(file => 
+      const deletePromises = files.map(file =>
         fs.unlink(path.join(this.tempDir, file))
       );
       await Promise.all(deletePromises);

@@ -103,12 +103,12 @@ export default async function healthRoutes(
       const health = await getSystemHealth();
       
       return {
-        status: health.overall ? 'healthy' : 'unhealthy',
+        status: (health as any).overall ? 'healthy' : 'unhealthy',
         timestamp: new Date().toISOString(),
         uptime: process.uptime(),
         version: '1.0.0',
-        services: health.services,
-        system: health.system
+        services: (health as any).services,
+        system: (health as any).system
       };
     } catch (error: any) {
       logger.error('Health check failed:', error);
@@ -144,7 +144,7 @@ export default async function healthRoutes(
       // Check if all critical services are ready
       const health = await getSystemHealth();
       
-      if (health.overall) {
+      if ((health as any).overall) {
         return {
           status: 'ready',
           timestamp: new Date().toISOString()

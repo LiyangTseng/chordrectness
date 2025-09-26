@@ -156,10 +156,10 @@ export interface ServerConfig {
   audioBitrate: string;
 }
 
-// Express types extensions
+// Fastify types extensions
 declare global {
-  namespace Express {
-    interface Request {
+  namespace Fastify {
+    interface FastifyRequest {
       user?: any;
       analysisId?: string;
     }

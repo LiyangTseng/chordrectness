@@ -4,7 +4,7 @@ Orchestrates chord detection using the model and audio processor
 """
 
 import numpy as np
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from loguru import logger
 
 from models.model_factory import ModelFactory
@@ -96,4 +96,47 @@ class ChordAnalysisService:
         except Exception as e:
             logger.error(f"Error in chord analysis: {e}")
             raise
+
+    def detect_key(self, chords_data: List[Dict[str, Any]]) -> str:
+        """
+        Detect the key signature from chord analysis results.
+
+        Args:
+            chords_data: List of chord analysis results
+
+        Returns:
+            Detected key signature
+        """
+        try:
+            # Simple key detection based on most common chord
+            if not chords_data:
+                return "Unknown"
+            
+            # Count chord occurrences
+            chord_counts = {}
+            for chord_data in chords_data:
+                chord = chord_data.get('chord', '')
+                if chord:
+                    chord_counts[chord] = chord_counts.get(chord, 0) + 1
+            
+            if not chord_counts:
+                return "Unknown"
+            
+            # Get the most common chord
+            most_common_chord = max(chord_counts, key=chord_counts.get)
+            
+            # Simple key detection logic (this could be enhanced)
+            if 'maj' in most_common_chord or '7' in most_common_chord:
+                # Extract root note
+                root = most_common_chord.split('maj')[0].split('7')[0].split('m')[0]
+                return f"{root} Major"
+            elif 'm' in most_common_chord and 'maj' not in most_common_chord:
+                root = most_common_chord.split('m')[0]
+                return f"{root} Minor"
+            else:
+                return f"{most_common_chord} (Unknown)"
+                
+        except Exception as e:
+            logger.error(f"Error detecting key: {e}")
+            return "Unknown"
 

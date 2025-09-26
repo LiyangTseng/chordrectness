@@ -12,22 +12,22 @@ import { logger } from '../utils/logger';
 
 // Request/Response schemas
 const AnalysisRequestSchema = Type.Object({
-  url: Type.String({ 
+  url: Type.String({
     format: 'uri',
     description: 'YouTube video URL',
     examples: ['https://www.youtube.com/watch?v=dQw4w9WgXcQ']
   }),
-  startTime: Type.Number({ 
+  startTime: Type.Number({
     minimum: 0,
     description: 'Start time in seconds',
     examples: [0, 30, 120]
   }),
-  endTime: Type.Optional(Type.Number({ 
+  endTime: Type.Optional(Type.Number({
     minimum: 0,
     description: 'End time in seconds',
     examples: [60, 180, 300]
   })),
-  analysisId: Type.Optional(Type.String({ 
+  analysisId: Type.Optional(Type.String({
     format: 'uuid',
     description: 'Optional analysis ID for tracking'
   }))
@@ -77,7 +77,7 @@ const ErrorResponseSchema = Type.Object({
 });
 
 // Initialize analysis service
-const analysisService = new AnalysisService();
+const analysisService = AnalysisService;
 
 export default async function analysisRoutes(
   fastify: FastifyInstance,
@@ -105,7 +105,7 @@ export default async function analysisRoutes(
     }
   }, async (request, reply) => {
     try {
-      const { url, startTime, endTime, analysisId } = request.body;
+      const { url, startTime, endTime, analysisId } = request.body as any;
 
       // Validate YouTube URL
       if (!validateYouTubeUrl(url)) {
@@ -162,7 +162,7 @@ export default async function analysisRoutes(
     }
   }, async (request, reply) => {
     try {
-      const { analysisId } = request.params;
+      const { analysisId } = request.params as any;
 
       const result = await analysisService.getAnalysisStatus(analysisId);
 
@@ -210,7 +210,7 @@ export default async function analysisRoutes(
     }
   }, async (request, reply) => {
     try {
-      const { analysisId } = request.params;
+      const { analysisId } = request.params as any;
 
       const result = await analysisService.getAnalysisResult(analysisId);
 
@@ -258,7 +258,7 @@ export default async function analysisRoutes(
     }
   }, async (request, reply) => {
     try {
-      const { analysisId } = request.params;
+      const { analysisId } = request.params as any;
 
       const result = await analysisService.cancelAnalysis(analysisId);
 
@@ -299,7 +299,7 @@ export default async function analysisRoutes(
     }
   }, async (request, reply) => {
     try {
-      const { limit = 10, offset = 0 } = request.query;
+      const { limit = 10, offset = 0 } = request.query as any;
 
       const analyses = await analysisService.getRecentAnalyses({
         limit,

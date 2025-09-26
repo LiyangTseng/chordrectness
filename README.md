@@ -1,206 +1,92 @@
-# 🎵 ChordRectness
+# ChordRectness
 
-**Enterprise-grade YouTube chord recognition platform**
+**Easy-to-use platform for quick music chord lookup**
 
-A modern, scalable web application that extracts chord progressions from YouTube video segments using AI-powered analysis. Built with TypeScript, Next.js, Fastify, and Python ML models.
+ChordRectness is a musical analysis platform that listens to audio files and identifies the chords being played. It provides chord progression analysis with confidence scores, making it useful for musicians, music students, and music enthusiasts.
 
-## 🏗️ **Architecture Overview**
+## **Usage**
 
-This is a **monorepo** following enterprise-grade patterns used by tech giants like Google, Meta, and Netflix:
+1. **Provide Audio**: Upload audio wav file / Enter any YouTube video URL (TODO)
+2. **Set Time Range**: Specify start time (and optionally end time)
+3. **Analyze**: Click analyze to start chord recognition
+4. **View Results**: See chord progression with confidence scores
 
-```
-chordrectness/
-├── apps/                    # Applications
-│   ├── web/                # Next.js Frontend
-│   └── api/                # Fastify Backend
-├── packages/               # Shared packages
-│   ├── shared-types/       # TypeScript types
-│   ├── ui-components/      # Reusable components
-│   └── utils/              # Shared utilities
-├── services/               # Microservices
-│   ├── ml-service/         # Python ML service
-│   └── audio-service/      # Audio processing
-├── infrastructure/         # Infrastructure as Code
-│   ├── docker/            # Container definitions
-│   ├── kubernetes/        # K8s manifests
-│   └── terraform/         # Cloud infrastructure
-├── docs/                  # Documentation
-├── scripts/               # Build & deployment
-└── tools/                 # Development tools
-```
+## **Software Architecture**
 
-## ✨ **Key Features**
+Built with TypeScript, Next.js, Fastify that aim for scalability. Plan to incorporate AI/ML models for chord analysis in the future.
 
-- 🎬 **YouTube Integration**: Extract audio from any YouTube video
-- ⏰ **Time-based Analysis**: Specify exact start and end times
-- 🎼 **AI Chord Recognition**: ML-powered chord progression analysis
-- 📊 **Confidence Scoring**: Reliability metrics for each chord
-- 🎨 **Modern UI**: Beautiful, responsive interface
-- 🔧 **TypeScript**: Full type safety across the stack
-- 🚀 **Scalable**: Microservices architecture
-- 🐳 **Containerized**: Docker-ready deployment
+For more details, refer to the [architecture document](docs/ARCHITECTURE.md).
 
-## 🚀 **Quick Start**
+## **Quick Start**
 
 ### **Prerequisites**
 - Docker & Docker Compose
 - Git
 
-### **One-Command Setup**
+### Codebase
 ```bash
 # Clone and start development environment
-git clone <repository-url>
+git clone https://github.com/LiyangTseng/chordrectness
 cd chordrectness
+```
+
+### Development
+
+Start all services with Docker:
+```bash
 npm run dev
 ```
 
-### **Development (Docker-First)**
+This starts:
+- **Frontend**: http://localhost:3000 (Next.js)
+- **Backend API**: http://localhost:3001 (Fastify)
+- **Audio Processing Algo**: http://localhost:8001 (Python/FastAPI)
+
+**Stop services:**
 ```bash
-# Start all services with hot reload
-npm run dev
-
-# Services available at:
-# 🌐 Frontend: http://localhost:3000
-# 🚀 Backend API: http://localhost:3001
-# 📚 API Docs: http://localhost:3001/docs
-# 🤖 ML Service: http://localhost:8001
-# 📊 ML Docs: http://localhost:8001/docs
+npm run dev:down
 ```
 
-### **Native Development (Optional)**
+**View logs:**
 ```bash
-# If you prefer native development
-npm run dev:native
-
-# Or start individually
-npm run dev:native --workspace=@chordrectness/web
-npm run dev:native --workspace=@chordrectness/api
-npm run dev:native --workspace=@chordrectness/ml-service
+npm run dev:logs
 ```
 
-### **Production Build**
-```bash
-# Build production images
-npm run build
 
-# Start production environment
-docker-compose -f infrastructure/docker/docker-compose.yml up
-```
 
-## 🎯 **Usage**
+## Audio Processing Algorithm
 
-1. **Paste YouTube URL**: Enter any YouTube video URL
-2. **Set Time Range**: Specify start time (and optionally end time)
-3. **Analyze**: Click analyze to start chord recognition
-4. **View Results**: See chord progression with confidence scores
+The platform uses HTTP API communication between services:
 
-### **Example**
-```
-YouTube URL: https://www.youtube.com/watch?v=dQw4w9WgXcQ
-Start Time: 0:30
-End Time: 1:00
-
-Result:
-- Cmaj7 (0:30-0:35) - Confidence: 0.87
-- Am7 (0:35-0:40) - Confidence: 0.82
-- Dm7 (0:40-0:45) - Confidence: 0.85
-- G7 (0:45-0:50) - Confidence: 0.89
-```
-
-## 🔧 **Development**
-
-### **Monorepo Commands**
-```bash
-# Install all dependencies
-npm install
-
-# Build all packages
-npm run build
-
-# Run tests
-npm run test
-
-# Lint all code
-npm run lint
-
-# Type check
-npm run type-check
-
-# Format code
-npm run format
-```
-
-### **Individual Workspace Commands**
-```bash
-# Frontend development
-cd apps/web
-npm run dev
-npm run build
-npm run lint
-
-# Backend development
-cd apps/api
-npm run dev
-npm run build
-npm run test
-
-# ML service development
-cd services/ml-service
-python main.py
-pip install -r requirements.txt
-```
-
-## 🤖 **ML Integration**
-
-The platform supports multiple ML integration patterns:
-
-### **1. HTTP API (Production)**
+### HTTP API Communication
 ```typescript
 // TypeScript calls Python FastAPI
-const response = await axios.post('http://ml-service:8001/analyze', {
+const response = await axios.post('http://chord-analyzer:8001/api/v1/analyze/audio', {
   audio_path: '/path/to/audio.wav',
   start_time: 0,
   end_time: 30
 });
 ```
 
-### **2. Child Process (Development)**
-```typescript
-// Direct Python execution
-const pythonProcess = spawn('python3', [
-  'chord_analyzer.py',
-  '--audio-path', audioPath
-]);
-```
+## Project Structure
 
-### **3. gRPC (High Performance)**
-```typescript
-// gRPC communication
-const client = new ChordAnalysisClient('localhost:50051');
-const response = await client.analyzeChord(request);
-```
-
-## 📁 **Project Structure**
-
-### **Applications (`apps/`)**
+### Applications (`apps/`)
 - **`web/`**: Next.js frontend with TypeScript
-- **`api/`**: Express.js backend with TypeScript
+- **`api/`**: Fastify backend with TypeScript
 
-### **Packages (`packages/`)**
+### Packages (`packages/`)
 - **`shared-types/`**: Common TypeScript interfaces
 - **`ui-components/`**: Reusable React components
 - **`utils/`**: Shared utility functions
 
-### **Services (`services/`)**
-- **`ml-service/`**: Python FastAPI ML service
-- **`audio-service/`**: Audio processing service
+### Services (`services/`)
+- **`chord-analyzer/`**: Python FastAPI ML service
 
-### **Infrastructure (`infrastructure/`)**
-- **`docker/`**: Container definitions
-- **`kubernetes/`**: K8s deployment manifests
-- **`terraform/`**: Cloud infrastructure code
+### Infrastructure
+- **`docker-compose.yml`**: Docker development environment
+- **`Dockerfile.*`**: Container definitions for each service
 
-## 🎼 **Supported Chord Types**
+## **Supported Chord Types**
 
 - **Major**: C, D, E, F, G, A, B
 - **Minor**: Cm, Dm, Em, Fm, Gm, Am, Bm
@@ -210,33 +96,33 @@ const response = await client.analyzeChord(request);
 - **Extensions**: 9th, 11th, 13th chords
 - **Alterations**: Sharp/flat variations
 
-## 🔮 **Roadmap**
+## **Roadmap**
 
-### **Phase 1: Core Platform** ✅
+### **Phase 1: Core Platform**
 - [x] Monorepo architecture
 - [x] TypeScript throughout
 - [x] ML integration patterns
 - [x] Docker containerization
 
-### **Phase 2: Enhanced ML** 🚧
+### **Phase 2: Enhanced ML**
 - [ ] Advanced ML models
 - [ ] Key signature detection
 - [ ] Tempo analysis
 - [ ] Real-time processing
 
-### **Phase 3: Production Features** 📋
+### **Phase 3: Production Features**
 - [ ] User authentication
 - [ ] Analysis history
 - [ ] Export functionality
 - [ ] API rate limiting
 
-### **Phase 4: Scale & Performance** 🔮
+### **Phase 4: Scale & Performance**
 - [ ] Kubernetes deployment
 - [ ] Auto-scaling
 - [ ] CDN integration
 - [ ] Global deployment
 
-## 🏢 **Enterprise Features**
+## **Codebase Features**
 
 - **Monorepo**: Single repository for all services
 - **TypeScript**: Full type safety across the stack
@@ -245,37 +131,3 @@ const response = await client.analyzeChord(request);
 - **CI/CD Ready**: GitHub Actions integration
 - **Monitoring**: Health checks and logging
 - **Security**: Rate limiting, CORS, validation
-
-## 🤝 **Contributing**
-
-We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
-
-### **Development Workflow**
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests
-5. Submit a pull request
-
-## 📄 **License**
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 **Acknowledgments**
-
-- [librosa](https://librosa.org/) - Audio analysis library
-- [music21](https://web.mit.edu/music21/) - Music theory toolkit
-- [Next.js](https://nextjs.org/) - React framework
-- [Express.js](https://expressjs.com/) - Node.js framework
-- [FastAPI](https://fastapi.tiangolo.com/) - Python web framework
-
-## 📞 **Support**
-
-- 📧 Email: support@chordrectness.com
-- 💬 Discord: [Join our community](https://discord.gg/chordrectness)
-- 📖 Documentation: [docs.chordrectness.com](https://docs.chordrectness.com)
-- 🐛 Issues: [GitHub Issues](https://github.com/your-org/chordrectness/issues)
-
----
-
-**Built with ❤️ for the music community**

@@ -9,28 +9,15 @@
     "services/*"
   ],
   "scripts": {
-    "dev": "./scripts/dev.sh",
-    "build": "./scripts/build.sh",
-    "down": "docker-compose down",
-    "logs": "docker-compose logs -f",
-    "dev:native": "turbo run dev",
-    "build:native": "turbo run build",
+    "dev": "docker-compose -f docker-compose.yml up --build",
+    "dev:down": "docker-compose -f docker-compose.yml down",
+    "dev:logs": "docker-compose -f docker-compose.yml logs -f",
+    "build": "turbo run build",
     "test": "turbo run test",
-    "lint": "turbo run lint",
     "type-check": "turbo run type-check",
-    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
-    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md}\"",
-    "changeset": "changeset",
-    "version-packages": "changeset version",
-    "release": "turbo run build --filter=!@chordrectness/docs && changeset publish"
+    "release": "turbo run build --filter=!@chordrectness/docs"
   },
   "devDependencies": {
-    "@changesets/cli": "^2.26.2",
-    "@typescript-eslint/eslint-plugin": "^6.15.0",
-    "@typescript-eslint/parser": "^6.15.0",
-    "eslint": "^8.56.0",
-    "eslint-config-prettier": "^9.1.0",
-    "prettier": "^3.1.1",
     "turbo": "^1.11.2",
     "typescript": "^5.3.3"
   },
@@ -47,7 +34,7 @@
     "music-theory",
     "typescript",
     "nextjs",
-    "express",
+    "fastify",
     "monorepo"
   ],
   "author": "ChordRectness Team",

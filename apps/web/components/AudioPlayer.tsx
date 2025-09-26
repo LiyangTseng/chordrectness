@@ -59,7 +59,7 @@ export function AudioPlayer({
         audio.removeEventListener('ended', () => setIsPlaying(false))
       }
     }
-  }, [startTime, endTime, onTimeRangeChange])
+  }, [startTime, endTime, onTimeRangeChange, onDurationChange])
 
   const handlePlayPause = () => {
     if (audioRef.current) {

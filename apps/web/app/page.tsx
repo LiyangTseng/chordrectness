@@ -11,6 +11,7 @@ interface ChordResult {
   chroma_vector: number[]
   analysis_time: number
   model_type: string
+  source?: string
 }
 
 export default function Home() {
@@ -20,12 +21,19 @@ export default function Home() {
   const [startTime, setStartTime] = useState(0)
   const [endTime, setEndTime] = useState(0)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [analysisProgress, setAnalysisProgress] = useState(0)
+  const [analysisStatus, setAnalysisStatus] = useState<string>('')
   const [result, setResult] = useState<ChordResult | null>(null)
   const [topChords, setTopChords] = useState<Array<{chord: string, confidence: number}> | null>(null)
   const [showTopChords, setShowTopChords] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [audioUrl, setAudioUrl] = useState<string | null>(null)
   const [audioDuration, setAudioDuration] = useState<number>(0)
+  const [youtubeStartTime, setYoutubeStartTime] = useState(0)
+  const [youtubeEndTime, setYoutubeEndTime] = useState(10)
+  const [youtubeAudioUrl, setYoutubeAudioUrl] = useState<string | null>(null)
+  const [youtubeDuration, setYoutubeDuration] = useState<number>(0)
+  const [isDownloading, setIsDownloading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -47,6 +55,48 @@ export default function Home() {
   const handleTimeRangeChange = (start: number, end: number) => {
     setStartTime(start)
     setEndTime(end)
+  }
+
+  const handleYouTubeDownload = async () => {
+    if (!url) return;
+
+    setIsDownloading(true)
+    setError(null)
+
+    try {
+        const response = await fetch('http://localhost:3001/api/youtube/download', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ url }),
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      const data = await response.json()
+
+      if (data.success) {
+        setYoutubeAudioUrl(`http://localhost:3001${data.data.audioUrl}`)
+        setYoutubeDuration(data.data.duration)
+        setAudioUrl(`http://localhost:3001${data.data.audioUrl}`)
+        setAudioDuration(data.data.duration)
+        // Reset time ranges
+        setYoutubeStartTime(0)
+        setYoutubeEndTime(Math.min(10, data.data.duration))
+        setStartTime(0)
+        setEndTime(Math.min(10, data.data.duration))
+      } else {
+        throw new Error(data.error || 'Failed to download YouTube audio')
+      }
+    } catch (error) {
+      console.error('Error downloading YouTube audio:', error)
+      setError(error instanceof Error ? error.message : 'Failed to download YouTube audio')
+    } finally {
+      setIsDownloading(false)
+    }
   }
 
   // Generate mock top 5 chords for demonstration
@@ -85,7 +135,7 @@ export default function Home() {
         if (endTime > startTime) formData.append('end_time', endTime.toString())
         formData.append('model_type', 'chroma')
 
-        const response = await fetch('http://localhost:8001/api/v1/analyze/audio', {
+        const response = await fetch('http://localhost:3001/api/analysis/audio', {
           method: 'POST',
           body: formData,
         })
@@ -99,15 +149,10 @@ export default function Home() {
         // Generate top 5 alternative chords
         setTopChords(generateTopChords(data.chord, data.confidence))
         setShowTopChords(false) // Start with alternatives hidden
-      } else if (activeTab === 'youtube' && url) {
-        // Handle YouTube URL
-        const formData = new FormData()
-        formData.append('url', url)
-        formData.append('start_time', startTime || '0')
-        if (endTime) formData.append('end_time', endTime)
-        formData.append('model_type', 'chroma')
-
-        const response = await fetch('http://localhost:3002/api/analysis/start', {
+      } else if (activeTab === 'youtube' && youtubeAudioUrl) {
+        // Handle YouTube analysis using the downloaded audio and selected time range
+        setAnalysisStatus('Starting analysis...')
+        const response = await fetch('http://localhost:3001/api/analysis/start', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -127,16 +172,62 @@ export default function Home() {
 
         if (data.success) {
           // For YouTube, we get an analysis ID, so we need to poll for results
-          // For now, let's show a simple message
-          setResult({
-            chord: 'Processing...',
-            confidence: 0,
-            chroma_vector: [],
-            analysis_time: 0,
-            model_type: 'chroma',
-            source: 'youtube',
-            analysisId: data.data.analysisId
-          })
+          const analysisId = data.data.analysisId
+
+          // Start polling for results
+          const pollForResults = async () => {
+            try {
+              const statusResponse = await fetch(`http://localhost:3001/api/analysis/${analysisId}`)
+              const statusData = await statusResponse.json()
+
+              if (statusData.success) {
+                const data = statusData.data
+
+                // Update progress and status
+                setAnalysisProgress(data.progress || 0)
+
+                if (data.status === 'completed') {
+                  setAnalysisStatus('Analysis complete!')
+                  // Analysis completed, get the results
+                  const results = data.results
+                  if (results && results.chords && results.chords.length > 0) {
+                    const chordResult = results.chords[0] // Get the first chord result
+                    setResult({
+                      chord: chordResult.chord,
+                      confidence: chordResult.confidence,
+                      chroma_vector: [], // YouTube results don't include chroma vector yet
+                      analysis_time: 0, // Could be calculated from timestamps
+                      model_type: 'chroma',
+                      source: 'youtube'
+                    })
+                    // Generate top chords for YouTube results too
+                    setTopChords(generateTopChords(chordResult.chord, chordResult.confidence))
+                    setShowTopChords(false)
+                  } else {
+                    throw new Error('No chord results found')
+                  }
+                } else if (data.status === 'error') {
+                  throw new Error('YouTube analysis failed')
+                } else if (data.status === 'processing') {
+                  setAnalysisStatus(`Processing... ${Math.round((data.progress || 0) * 100)}%`)
+                  // Still processing, poll again in 1 second
+                  setTimeout(pollForResults, 1000)
+                } else {
+                  setAnalysisStatus('Waiting...')
+                  // Still processing, poll again in 1 second
+                  setTimeout(pollForResults, 1000)
+                }
+              } else {
+                throw new Error('Failed to get analysis status')
+              }
+            } catch (error) {
+              console.error('Error polling for results:', error)
+              setError('Failed to get analysis results')
+            }
+          }
+
+          // Start polling
+          pollForResults()
         } else {
           throw new Error(data.error || 'YouTube analysis failed')
         }
@@ -192,7 +283,12 @@ export default function Home() {
                   </div>
                   <div className="bg-white rounded-lg p-3 shadow-sm">
                     <p className="text-sm text-gray-600">Time Range</p>
-                    <p className="text-lg font-semibold text-gray-800">{startTime.toFixed(3)}s - {endTime.toFixed(3)}s</p>
+                    <p className="text-lg font-semibold text-gray-800">
+                      {activeTab === 'youtube'
+                        ? `${youtubeStartTime.toFixed(1)}s - ${youtubeEndTime.toFixed(1)}s`
+                        : `${startTime.toFixed(3)}s - ${endTime.toFixed(3)}s`
+                      }
+                    </p>
                   </div>
                 </div>
 
@@ -221,7 +317,7 @@ export default function Home() {
                 )}
 
                 {/* Chroma Vector Visualization */}
-                {result.chroma_vector && (
+                {result?.chroma_vector && (
                   <div className="mt-4">
                     <div className="grid grid-cols-12 gap-1 max-w-md mx-auto">
                       {result.chroma_vector.map((intensity, index) => {
@@ -312,28 +408,71 @@ export default function Home() {
                     )}
                   </div>
                 ) : (
-                  <div>
-                    <label htmlFor="url" className="block text-sm font-medium text-gray-700 mb-2">
-                      YouTube URL
-                    </label>
-                    <input
-                      type="url"
-                      id="url"
-                      value={url}
-                      onChange={(e) => setUrl(e.target.value)}
-                      placeholder="https://www.youtube.com/watch?v=..."
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    />
+                  <div className="space-y-4">
+                    <div>
+                      <label htmlFor="url" className="block text-sm font-medium text-gray-700 mb-2">
+                        YouTube URL
+                      </label>
+                      <input
+                        type="url"
+                        id="url"
+                        value={url}
+                        onChange={(e) => setUrl(e.target.value)}
+                        placeholder="https://www.youtube.com/watch?v=..."
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+
+                    {!youtubeAudioUrl ? (
+                      <button
+                        type="button"
+                        onClick={handleYouTubeDownload}
+                        disabled={isDownloading || !url}
+                        className="w-full bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {isDownloading ? (
+                          <div className="flex items-center justify-center">
+                            <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            Downloading Audio...
+                          </div>
+                        ) : (
+                          'Download Audio'
+                        )}
+                      </button>
+                    ) : (
+                      <div className="text-sm text-green-600 text-center">
+                        ✅ Audio downloaded successfully! Duration: {youtubeDuration.toFixed(1)}s
+                      </div>
+                    )}
                   </div>
                 )}
 
-                <button
-                  type="submit"
-                  disabled={isAnalyzing || (activeTab === 'upload' && !file) || (activeTab === 'youtube' && !url)}
-                  className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isAnalyzing ? 'Loading...' : 'Load Audio'}
-                </button>
+                {activeTab === 'youtube' && youtubeAudioUrl ? (
+                  <div className="text-center text-sm text-gray-600">
+                    Audio ready! Use the player below to select time ranges and analyze chords.
+                  </div>
+                ) : (
+                  <button
+                    type="submit"
+                    disabled={isAnalyzing || (activeTab === 'upload' && !file) || (activeTab === 'youtube' && !youtubeAudioUrl)}
+                    className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isAnalyzing ? (
+                      <div className="flex items-center justify-center">
+                        <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        {analysisStatus || 'Processing...'}
+                      </div>
+                    ) : (
+                      'Load Audio'
+                    )}
+                  </button>
+                )}
               </form>
             ) : (
               <div className="space-y-4">
@@ -381,6 +520,25 @@ export default function Home() {
               </div>
             )}
 
+            {/* Progress Bar for YouTube Analysis */}
+            {isAnalyzing && activeTab === 'youtube' && (
+              <div className="mt-6 p-4 rounded-md bg-blue-50 border border-blue-200">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-sm font-medium text-blue-800">{analysisStatus}</p>
+                  <p className="text-sm text-blue-600">{Math.round(analysisProgress * 100)}%</p>
+                </div>
+                <div className="w-full bg-blue-200 rounded-full h-2">
+                  <div
+                    className="bg-blue-600 h-2 rounded-full transition-all duration-300 ease-out"
+                    style={{ width: `${analysisProgress * 100}%` }}
+                  ></div>
+                </div>
+                <p className="text-xs text-blue-600 mt-2">
+                  This may take a few moments as we download and analyze the audio...
+                </p>
+              </div>
+            )}
+
             {error && (
               <div className="mt-6 p-4 rounded-md bg-red-50 border border-red-200 text-red-700">
                 <p className="font-medium">Error</p>
@@ -391,27 +549,27 @@ export default function Home() {
 
 
           {/* Old Results - Removed */}
-          {false && result && (
+          {result && (
             <div className="mt-6 space-y-4">
               <div className="p-4 rounded-md bg-green-50 border border-green-200">
                 <h3 className="font-medium text-green-800 mb-2">Analysis Complete!</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <p className="text-sm text-green-700">
-                      <span className="font-medium">Chord:</span> {result.chord}
+                      <span className="font-medium">Chord:</span> {result?.chord}
                     </p>
                     <p className="text-sm text-green-700">
-                      <span className="font-medium">Confidence:</span> {(result.confidence * 100).toFixed(1)}%
+                      <span className="font-medium">Confidence:</span> {((result?.confidence || 0) * 100).toFixed(1)}%
               </p>
             </div>
                   <div>
                     <p className="text-sm text-green-700">
-                      <span className="font-medium">Analysis Time:</span> {result.analysis_time.toFixed(2)}s
+                      <span className="font-medium">Analysis Time:</span> {(result?.analysis_time || 0).toFixed(2)}s
                     </p>
                     <p className="text-sm text-green-700">
-                      <span className="font-medium">Model:</span> {result.model_type}
+                      <span className="font-medium">Model:</span> {result?.model_type}
                     </p>
-                    {result.source && (
+                    {result?.source && (
                       <p className="text-sm text-green-700">
                         <span className="font-medium">Source:</span> {result.source}
                       </p>
@@ -421,7 +579,7 @@ export default function Home() {
               </div>
 
               {/* Chroma Vector Visualization */}
-              {result.chroma_vector && (
+              {result?.chroma_vector && (
                 <div className="p-4 rounded-md bg-gray-50 border border-gray-200">
                   <h4 className="font-medium text-gray-800 mb-3">Chroma Vector (12-Note Intensity)</h4>
                   <div className="grid grid-cols-12 gap-1">

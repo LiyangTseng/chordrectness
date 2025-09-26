@@ -1,7 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import * as ytdl from 'ytdl-core';
-import * as ffmpeg from 'fluent-ffmpeg';
+import ytdl from 'ytdl-core';
+import ffmpeg from 'fluent-ffmpeg';
+import { spawn } from 'child_process';
 
 export interface AudioExtractionResult {
   audioPath: string;
@@ -20,27 +21,34 @@ export class AudioProcessor {
   }
 
   /**
-   * Extract audio from YouTube URL
+   * Extract full audio from YouTube URL (no time restrictions)
    */
   async extractAudioFromYouTube(
-    url: string, 
-    startTime: number, 
+    url: string,
+    startTime?: number,
     endTime?: number
   ): Promise<AudioExtractionResult> {
     try {
+      console.log(`Extracting full audio from YouTube URL: ${url}`);
+
       // Validate YouTube URL
       if (!ytdl.validateURL(url)) {
         throw new Error('Invalid YouTube URL');
       }
 
+      console.log('YouTube URL is valid, getting video info...');
+
       // Get video info
       const info = await ytdl.getInfo(url);
       const videoId = info.videoDetails.videoId;
-      
+      const videoDuration = parseInt(info.videoDetails.lengthSeconds);
+
+      console.log(`Video ID: ${videoId}, Title: ${info.videoDetails.title}, Duration: ${videoDuration}s`);
+
       // Generate output filename
       const timestamp = Date.now();
       const outputPath = path.join(this.tempDir, `${videoId}_${timestamp}.wav`);
-      
+
       // Extract audio using ytdl-core and ffmpeg
       const audioStream = ytdl(url, {
         quality: 'highestaudio',
@@ -49,35 +57,33 @@ export class AudioProcessor {
 
       return new Promise((resolve, reject) => {
         let duration = 0;
-        
+
         ffmpeg(audioStream)
           .audioCodec('pcm_s16le')
           .audioFrequency(44100)
           .audioChannels(1)
           .format('wav')
-          .seekInput(startTime)
-          .duration(endTime ? endTime - startTime : undefined)
-          .on('start', (commandLine) => {
+          .on('start', (commandLine: string) => {
             console.log('FFmpeg command:', commandLine);
           })
-          .on('progress', (progress) => {
+          .on('progress', (progress: any) => {
             if (progress.timemark) {
               // Parse duration from timemark (HH:MM:SS.mmm format)
               const timeParts = progress.timemark.split(':');
-              duration = parseInt(timeParts[0]) * 3600 + 
-                        parseInt(timeParts[1]) * 60 + 
+              duration = parseInt(timeParts[0]) * 3600 +
+                        parseInt(timeParts[1]) * 60 +
                         parseFloat(timeParts[2]);
             }
           })
           .on('end', () => {
-            console.log('Audio extraction completed');
+            console.log('Full audio extraction completed');
             resolve({
               audioPath: outputPath,
-              duration: duration || (endTime ? endTime - startTime : 60),
+              duration: duration || videoDuration,
               sampleRate: 44100
             });
           })
-          .on('error', (err) => {
+          .on('error', (err: Error) => {
             console.error('FFmpeg error:', err);
             reject(new Error(`Audio extraction failed: ${err.message}`));
           })
@@ -85,8 +91,59 @@ export class AudioProcessor {
       });
 
     } catch (error) {
-      throw new Error(`Failed to extract audio: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.log('ytdl-core failed, trying yt-dlp fallback...');
+      return this.extractAudioWithYtDlp(url, startTime, endTime);
     }
+  }
+
+  /**
+   * Extract full audio using yt-dlp as fallback
+   */
+  private async extractAudioWithYtDlp(
+    url: string,
+    startTime?: number,
+    endTime?: number
+  ): Promise<AudioExtractionResult> {
+    return new Promise((resolve, reject) => {
+      const timestamp = Date.now();
+      const outputPath = path.join(this.tempDir, `ytdlp_${timestamp}.wav`);
+
+      console.log(`Using yt-dlp to extract full audio from: ${url}`);
+
+      // Build yt-dlp command - download full video
+      const args = [
+        url,
+        '--extract-audio',
+        '--audio-format', 'wav',
+        '--audio-quality', '0',
+        '--output', outputPath.replace('.wav', '.%(ext)s'),
+        '--no-playlist'
+      ];
+
+      const ytdlp = spawn('yt-dlp', args);
+
+      ytdlp.on('close', (code) => {
+        if (code === 0) {
+          console.log('yt-dlp full extraction completed successfully');
+          // Get video duration from yt-dlp output or use a default
+          resolve({
+            audioPath: outputPath,
+            duration: 300, // Default 5 minutes, will be updated by frontend
+            sampleRate: 44100
+          });
+        } else {
+          reject(new Error(`yt-dlp failed with code ${code}`));
+        }
+      });
+
+      ytdlp.on('error', (error) => {
+        reject(new Error(`yt-dlp error: ${error.message}`));
+      });
+
+      ytdlp.stderr.on('data', (data) => {
+        console.log('yt-dlp stderr:', data.toString());
+      });
+    });
   }
 
   /**
@@ -133,7 +190,7 @@ export class AudioProcessor {
 
         resolve({
           duration: parseFloat(audioStream.duration || '0'),
-          sampleRate: parseInt(audioStream.sample_rate || '44100'),
+          sampleRate: parseInt(audioStream.sample_rate?.toString() || '44100'),
           channels: audioStream.channels || 1
         });
       });

@@ -1,26 +1,67 @@
 services:
-  # Fastify API service
+  # ML Service (Python/FastAPI)
+  chord-analyzer:
+    build:
+      context: ./services/chord-analyzer
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./services/chord-analyzer:/app
+      - /app/__pycache__
+    environment:
+      - PYTHONPATH=/app
+    command: python server.py
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Backend API (Node.js/Fastify)
   api:
     build:
-      context: .
-      dockerfile: infrastructure/docker/Dockerfile.api
-      target: development
+      context: ./apps/api
+      dockerfile: Dockerfile
     ports:
-      - "3002:3001"
-    environment:
-      - NODE_ENV=development
-      - PORT=3001
+      - "3001:3001"
     volumes:
       - ./apps/api:/app
       - /app/node_modules
-    command: npm run dev
-
-  # Static web service
-  web:
-    image: nginx:alpine
-    ports:
-      - "3003:80"
-    volumes:
-      - ./apps/web:/usr/share/nginx/html
+    environment:
+      - NODE_ENV=development
+      - CHORD_ANALYZER_URL=http://chord-analyzer:8001
+      - PORT=3001
     depends_on:
-      - api
+      chord-analyzer:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Frontend (Next.js)
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./apps/web:/app
+      - /app/node_modules
+      - /app/.next
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_API_URL=http://localhost:3001
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+networks:
+  default:
+    name: chordrectness-dev

@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
@@ -8,7 +9,10 @@ import swaggerUi from '@fastify/swagger-ui';
 import sensible from '@fastify/sensible';
 import { v4 as uuidv4 } from 'uuid';
 import * as fs from 'fs';
+import * as fsPromises from 'fs/promises';
 import * as path from 'path';
+import FormData from 'form-data';
+import axios from 'axios';
 import { ChordDetector } from './services/ChordDetector';
 import { AudioProcessor } from './services/AudioProcessor';
 import { ChordAnalyzerClient } from './services/ChordAnalyzerClient';
@@ -29,7 +33,7 @@ const fastify = Fastify({
 // Initialize services
 const chordDetector = new ChordDetector();
 const audioProcessor = new AudioProcessor();
-const chordAnalyzerClient = new ChordAnalyzerClient(process.env.CHORD_ANALYZER_URL || 'http://chord-analyzer:8001');
+const chordAnalyzerClient = new ChordAnalyzerClient(process.env.CHORD_ANALYZER_URL || 'http://localhost:8001');
 
 // Store analysis results in memory (in production, use Redis or database)
 const analysisResults = new Map<string, any>();
@@ -109,6 +113,85 @@ async function registerRoutes() {
     };
   });
 
+  // Download YouTube audio for player
+  fastify.post('/api/youtube/download', {
+    schema: {
+      description: 'Download YouTube audio for player',
+      tags: ['youtube'],
+      body: {
+        type: 'object',
+        required: ['url'],
+        properties: {
+          url: { type: 'string', format: 'uri' }
+        }
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            data: {
+              type: 'object',
+              properties: {
+                audioUrl: { type: 'string' },
+                duration: { type: 'number' },
+                title: { type: 'string' }
+              }
+            }
+          }
+        }
+      }
+    }
+  }, async (request, reply) => {
+    const { url } = request.body as any;
+    
+    if (!url) {
+      return reply.code(400).send({
+        success: false,
+        error: 'YouTube URL is required'
+      });
+    }
+
+    try {
+      // Extract full audio from YouTube
+      const audioProcessor = new (await import('./services/AudioProcessor')).AudioProcessor();
+      const audioResult = await audioProcessor.extractAudioFromYouTube(url);
+      
+      // Create a public URL for the audio file
+      const audioUrl = `/api/audio/${path.basename(audioResult.audioPath)}`;
+      
+      return {
+        success: true,
+        data: {
+          audioUrl,
+          duration: audioResult.duration,
+          title: 'YouTube Audio' // Could be enhanced to get actual title
+        }
+      };
+    } catch (error) {
+      fastify.log.error('YouTube download error:', error);
+      return reply.code(500).send({
+        success: false,
+        error: 'Failed to download YouTube audio'
+      });
+    }
+  });
+
+  // Serve audio files
+  fastify.get('/api/audio/:filename', async (request, reply) => {
+    const { filename } = request.params as any;
+    const audioPath = path.join(process.cwd(), 'temp', 'audio', filename);
+    
+    try {
+      await fsPromises.access(audioPath);
+      const audioBuffer = await fsPromises.readFile(audioPath);
+      reply.type('audio/wav');
+      return reply.send(audioBuffer);
+    } catch (error) {
+      return reply.code(404).send({ error: 'Audio file not found' });
+    }
+  });
+
   // Start analysis
   fastify.post('/api/analysis/start', {
     schema: {
@@ -182,15 +265,21 @@ async function registerRoutes() {
       tags: ['analysis']
     }
   }, async (request, reply) => {
+    let tempPath: string | undefined;
     try {
+      fastify.log.info('Received audio analysis request');
+
       const data = await request.file();
 
       if (!data) {
+        fastify.log.warn('No file uploaded in request');
         return reply.code(400).send({ error: 'No file uploaded' });
       }
 
+      fastify.log.info(`Processing file: ${data.filename}, size: ${data.file.bytesRead || 'unknown'}`);
+
       // Create a temporary file
-      const tempPath = path.join(process.cwd(), 'temp', 'audio', `${Date.now()}_${data.filename}`);
+      tempPath = path.join(process.cwd(), 'temp', 'audio', `${Date.now()}_${data.filename}`);
       const writeStream = fs.createWriteStream(tempPath);
 
       // Write the file
@@ -200,25 +289,44 @@ async function registerRoutes() {
         writeStream.on('error', reject);
       });
 
-      // Call Python service
+      // Call Python service directly with file path
+      const startTime = (data.fields?.start_time as any)?.value || '0';
+      const endTime = (data.fields?.end_time as any)?.value;
+      const modelType = (data.fields?.model_type as any)?.value || 'chroma';
+
+      fastify.log.info(`Calling Python service with: startTime=${startTime}, endTime=${endTime}, modelType=${modelType}`);
+
+      // Create form data for the Python service
       const formData = new FormData();
       formData.append('file', fs.createReadStream(tempPath), data.filename);
-      formData.append('start_time', data.fields?.start_time?.value || '0');
-      if (data.fields?.end_time?.value) {
-        formData.append('end_time', data.fields.end_time.value);
+      formData.append('start_time', startTime);
+      if (endTime) {
+        formData.append('end_time', endTime);
       }
-      formData.append('model_type', data.fields?.model_type?.value || 'chroma');
+      formData.append('model_type', modelType);
 
-      const pythonResponse = await fetch('http://localhost:8001/api/v1/analyze/audio', {
-        method: 'POST',
-        body: formData,
+      fastify.log.info('Sending request to Python service...');
+
+      // Test connection first
+      const pythonServiceUrl = process.env.CHORD_ANALYZER_URL || 'http://chord-analyzer:8001';
+      try {
+        const healthCheck = await axios.get(`${pythonServiceUrl}/api/v1/health`, { timeout: 5000 });
+        fastify.log.info(`Python service health check: ${healthCheck.status}`);
+      } catch (healthError) {
+        fastify.log.error('Python service health check failed:', healthError);
+        throw new Error(`Python service not accessible: ${healthError instanceof Error ? healthError.message : 'Unknown error'}`);
+      }
+
+      const pythonResponse = await axios.post(`${pythonServiceUrl}/api/v1/analyze/audio`, formData, {
+        headers: {
+          ...formData.getHeaders(),
+        },
+        timeout: 30000, // 30 second timeout
       });
 
-      if (!pythonResponse.ok) {
-        throw new Error(`Python service error: ${pythonResponse.status}`);
-      }
+      fastify.log.info(`Python service response: ${pythonResponse.status}`);
 
-      const result = await pythonResponse.json();
+      const result = pythonResponse.data;
 
       // Clean up temp file
       fs.unlinkSync(tempPath);
@@ -227,7 +335,26 @@ async function registerRoutes() {
 
     } catch (error) {
       fastify.log.error('Audio analysis error:', error);
-      return reply.code(500).send({ error: 'Analysis failed' });
+
+      // Clean up temp file if it exists
+      if (tempPath && fs.existsSync(tempPath)) {
+        try {
+          fs.unlinkSync(tempPath);
+        } catch (cleanupError) {
+          fastify.log.warn('Failed to cleanup temp file:', cleanupError);
+        }
+      }
+
+      // Return more detailed error information
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorDetails = {
+        error: 'Analysis failed',
+        message: errorMessage,
+        timestamp: new Date().toISOString()
+      };
+
+      fastify.log.error('Audio analysis error details:', errorDetails);
+      return reply.code(500).send(errorDetails);
     }
   });
 
@@ -255,7 +382,26 @@ async function registerRoutes() {
                 progress: { type: 'number' },
                 createdAt: { type: 'string' },
                 updatedAt: { type: 'string' },
-                results: { type: 'object' }
+                results: {
+                  type: 'object',
+                  properties: {
+                    chords: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          chord: { type: 'string' },
+                          confidence: { type: 'number' },
+                          start_time: { type: 'number' },
+                          end_time: { type: 'number' }
+                        }
+                      }
+                    },
+                    key: { type: 'string' },
+                    tempo: { type: 'number' },
+                    timeSignature: { type: 'string' }
+                  }
+                }
               }
             }
           }
@@ -266,6 +412,7 @@ async function registerRoutes() {
     const { id } = request.params as any;
 
     const analysis = analysisResults.get(id);
+    
     if (!analysis) {
       return reply.code(404).send({
         success: false,
@@ -283,6 +430,8 @@ async function registerRoutes() {
 // Async audio processing function
 async function processAudioAsync(analysisId: string, url: string, startTime: number, endTime?: number) {
   try {
+    fastify.log.info(`Starting YouTube analysis for ${url}, analysisId: ${analysisId}`);
+
     // Update progress
     analysisResults.set(analysisId, {
       ...analysisResults.get(analysisId),
@@ -292,18 +441,37 @@ async function processAudioAsync(analysisId: string, url: string, startTime: num
     });
 
     // Check if chord analyzer service is available
+    fastify.log.info('Checking chord analyzer service health...');
     const isHealthy = await chordAnalyzerClient.healthCheck();
+    fastify.log.info('Chord analyzer service healthy:', isHealthy);
 
     if (isHealthy) {
       // Use Python chord analyzer service
       fastify.log.info('Using Python chord analyzer service');
 
-      const analysisResult = await chordAnalyzerClient.analyzeChords({
-        url,
-        start_time: startTime,
-        end_time: endTime,
-        analysis_id: analysisId
-      });
+      // Use real chord analyzer service
+      fastify.log.info('Calling chordAnalyzerClient.analyzeChords...');
+      let analysisResult;
+      try {
+        const result = await chordAnalyzerClient.analyzeChords({
+          url,
+          startTime: startTime,
+          endTime: endTime,
+          analysisId: analysisId
+        });
+        fastify.log.info('ChordAnalyzerClient.analyzeChords completed');
+        analysisResult = result;
+        fastify.log.info('Analysis result received:', JSON.stringify(analysisResult, null, 2));
+      } catch (error) {
+        fastify.log.error('Error in chordAnalyzerClient.analyzeChords:', error);
+        fastify.log.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+        throw error;
+      }
+
+      // Check if analysisResult is valid
+      if (!analysisResult || !analysisResult.chords) {
+        throw new Error('Invalid analysis result received from chord analyzer service');
+      }
 
       // Update with results
       analysisResults.set(analysisId, {
@@ -315,7 +483,7 @@ async function processAudioAsync(analysisId: string, url: string, startTime: num
           chords: analysisResult.chords,
           key: analysisResult.key,
           tempo: analysisResult.tempo,
-          timeSignature: analysisResult.time_signature
+          timeSignature: analysisResult.timeSignature
         }
       });
     } else {
@@ -354,6 +522,7 @@ async function processAudioAsync(analysisId: string, url: string, startTime: num
 
   } catch (error) {
     // Update with error
+    fastify.log.error('YouTube analysis error:', error);
     analysisResults.set(analysisId, {
       ...analysisResults.get(analysisId),
       status: 'error',

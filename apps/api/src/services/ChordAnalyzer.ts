@@ -108,7 +108,8 @@ export class ChordAnalyzer {
         duration: 30, // seconds
         sampleRate: this.sampleRate,
         channels: 1,
-        bitrate: 128000
+        bitrate: 128000,
+        format: 'wav'
       };
     } catch (error) {
       logger.error('Failed to get audio info:', error);
